@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Monitoring Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-6">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Server Monitoring Dashboard</h1>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- CPU Usage Chart -->
+            <div class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">CPU Usage (%)</h2>
+                <canvas id="cpuChart"></canvas>
+            </div>
+            <!-- RAM Usage Chart -->
+            <div class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">RAM Usage (%)</h2>
+                <canvas id="ramChart"></canvas>
+            </div>
+            <!-- Swap Usage Chart -->
+            <div class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">Swap Usage (%)</h2>
+                <canvas id="swapChart"></canvas>
+            </div>
+            <!-- Disk Usage Chart -->
+            <div class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">Disk Usage (%)</h2>
+                <canvas id="diskChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Data dari Flask
+        const timestamps = {{ timestamps | tojson }};
+        const cpuData = {{ cpu | tojson }};
+        const ramData = {{ ram | tojson }};
+        const swapData = {{ swap | tojson }};
+        const diskData = {{ disk | tojson }};
+
+        // Pengecekan data
+        if (timestamps.length === 0 || cpuData.length === 0) {
+            console.log("No data available to render charts.");
+        } else {
+            // Fungsi untuk membuat chart
+            function createChart(canvasId, label, data, color) {
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: timestamps,
+                        datasets: [{
+                            label: label,
+                            data: data,
+                            borderColor: color,
+                            backgroundColor: color + '33', // Transparansi untuk fill
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 100,
+                                title: {
+                                    display: true,
+                                    text: 'Usage (%)'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Time'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Inisialisasi chart
+            createChart('cpuChart', 'CPU Usage', cpuData, '#3B82F6');
+            createChart('ramChart', 'RAM Usage', ramData, '#10B981');
+            createChart('swapChart', 'Swap Usage', swapData, '#F59E0B');
+            createChart('diskChart', 'Disk Usage', diskData, '#EF4444');
+        }
+    </script>
+</body>
+</html>
