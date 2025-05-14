@@ -12,6 +12,19 @@
 <body class="bg-gray-100 font-sans">
     <div class="container mx-auto p-6">
         <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Server Monitoring Dashboard</h1>
+        <!-- Filter Dropdown -->
+        <div class="flex justify-center mb-6">
+            <div class="relative inline-block">
+                <select id="timeFilter" class="block appearance-none bg-white border border-gray-300 text-gray-700 py-2 px-4 pr-8 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="minute">Per Menit</option>
+                    <option value="hour">Per Jam</option>
+                    <option value="day">Per Hari</option>
+                </select>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                    <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+                </div>
+            </div>
+        </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- CPU Usage Chart -->
             <div class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow">
@@ -38,65 +51,150 @@
 
     <script>
         // Data dari Flask
-        const timestamps = {{ timestamps | tojson }};
-        const cpuData = {{ cpu | tojson }};
-        const ramData = {{ ram | tojson }};
-        const swapData = {{ swap | tojson }};
-        const diskData = {{ disk | tojson }};
+        const originalTimestamps = {{ timestamps | tojson }};
+        const originalCpuData = {{ cpu | tojson }};
+        const originalRamData = {{ ram | tojson }};
+        const originalSwapData = {{ swap | tojson }};
+        const originalDiskData = {{ disk | tojson }};
 
-        // Pengecekan data
-        if (timestamps.length === 0 || cpuData.length === 0) {
-            console.log("No data available to render charts.");
-        } else {
-            // Fungsi untuk membuat chart
-            function createChart(canvasId, label, data, color) {
-                const ctx = document.getElementById(canvasId).getContext('2d');
-                new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: timestamps,
-                        datasets: [{
-                            label: label,
-                            data: data,
-                            borderColor: color,
-                            backgroundColor: color + '33', // Transparansi untuk fill
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 3,
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                max: 100,
-                                title: {
-                                    display: true,
-                                    text: 'Usage (%)'
-                                }
-                            },
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Time'
-                                }
+        // Simpan chart instance untuk di-update
+        let cpuChart, ramChart, swapChart, diskChart;
+
+        // Fungsi untuk memfilter data berdasarkan granularity waktu
+        function filterDataByTime(timestamps, cpuData, ramData, swapData, diskData, granularity) {
+            const filteredTimestamps = [];
+            const filteredCpu = [];
+            const filteredRam = [];
+            const filteredSwap = [];
+            const filteredDisk = [];
+
+            const timeMap = new Map();
+
+            timestamps.forEach((timestamp, index) => {
+                const date = new Date(timestamp);
+                let key;
+
+                if (granularity === 'day') {
+                    key = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+                } else if (granularity === 'hour') {
+                    key = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:00`;
+                } else {
+                    key = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${date.getMinutes()}`;
+                }
+
+                if (!timeMap.has(key)) {
+                    timeMap.set(key, {
+                        cpu: [],
+                        ram: [],
+                        swap: [],
+                        disk: [],
+                        timestamp: key
+                    });
+                }
+
+                const entry = timeMap.get(key);
+                entry.cpu.push(cpuData[index]);
+                entry.ram.push(ramData[index]);
+                entry.swap.push(swapData[index]);
+                entry.disk.push(diskData[index]);
+            });
+
+            // Ambil rata-rata untuk setiap grup
+            timeMap.forEach((value, key) => {
+                filteredTimestamps.push(value.timestamp);
+                filteredCpu.push(value.cpu.reduce((a, b) => a + b, 0) / value.cpu.length);
+                filteredRam.push(value.ram.reduce((a, b) => a + b, 0) / value.ram.length);
+                filteredSwap.push(value.swap.reduce((a, b) => a + b, 0) / value.swap.length);
+                filteredDisk.push(value.disk.reduce((a, b) => a + b, 0) / value.disk.length);
+            });
+
+            return { timestamps: filteredTimestamps, cpu: filteredCpu, ram: filteredRam, swap: filteredSwap, disk: filteredDisk };
+        }
+
+        // Fungsi untuk membuat chart
+        function createChart(canvasId, label, data, color) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: label,
+                        data: data,
+                        borderColor: color,
+                        backgroundColor: color + '33', // Transparansi untuk fill
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 3,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Usage (%)'
                             }
                         },
-                        plugins: {
-                            legend: {
+                        x: {
+                            title: {
                                 display: true,
+                                text: 'Time'
                             }
                         }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                        }
                     }
-                });
-            }
+                }
+            });
+        }
 
+        // Fungsi untuk update chart berdasarkan filter
+        function updateCharts(granularity) {
+            const filteredData = filterDataByTime(originalTimestamps, originalCpuData, originalRamData, originalSwapData, originalDiskData, granularity);
+
+            // Update data chart
+            cpuChart.data.labels = filteredData.timestamps;
+            cpuChart.data.datasets[0].data = filteredData.cpu;
+            cpuChart.update();
+
+            ramChart.data.labels = filteredData.timestamps;
+            ramChart.data.datasets[0].data = filteredData.ram;
+            ramChart.update();
+
+            swapChart.data.labels = filteredData.timestamps;
+            swapChart.data.datasets[0].data = filteredData.swap;
+            swapChart.update();
+
+            diskChart.data.labels = filteredData.timestamps;
+            diskChart.data.datasets[0].data = filteredData.disk;
+            diskChart.update();
+        }
+
+        // Pengecekan data
+        if (originalTimestamps.length === 0 || originalCpuData.length === 0) {
+            console.log("No data available to render charts.");
+        } else {
             // Inisialisasi chart
-            createChart('cpuChart', 'CPU Usage', cpuData, '#3B82F6');
-            createChart('ramChart', 'RAM Usage', ramData, '#10B981');
-            createChart('swapChart', 'Swap Usage', swapData, '#F59E0B');
-            createChart('diskChart', 'Disk Usage', diskData, '#EF4444');
+            cpuChart = createChart('cpuChart', 'CPU Usage', originalCpuData, '#3B82F6');
+            ramChart = createChart('ramChart', 'RAM Usage', originalRamData, '#10B981');
+            swapChart = createChart('swapChart', 'Swap Usage', originalSwapData, '#F59E0B');
+            diskChart = createChart('diskChart', 'Disk Usage', originalDiskData, '#EF4444');
+
+            // Default filter: per menit
+            updateCharts('minute');
+
+            // Event listener untuk filter
+            document.getElementById('timeFilter').addEventListener('change', (event) => {
+                const granularity = event.target.value;
+                updateCharts(granularity);
+            });
         }
     </script>
 </body>
